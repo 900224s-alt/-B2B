@@ -33,11 +33,10 @@ def get_owner(val):
 
 # ----------------- 前端上傳介面 ----------------- #
 task_file = st.file_uploader("1. 上傳【工作任務查詢】(Excel)", type=["xlsx", "xls"])
-mgmt_file = st.file_uploader("2. 上傳【出庫管理】(Excel)", type=["xlsx", "xls"])
+mgmt_file = st.file_uploader("2. 上傳【出庫單管理】(Excel)", type=["xlsx", "xls"])
 line_file = st.file_uploader("3. 上傳【出庫單行查詢】(Excel)", type=["xlsx", "xls"])
 history_file = st.file_uploader("4. 上傳【交易歷史查詢】(Excel)", type=["xlsx", "xls"])
 
-# 當四個檔案都上傳完成後，才顯示按鈕
 if task_file and mgmt_file and line_file and history_file:
     if st.button("🚀 開始整合分析資料", type="primary"):
         with st.spinner("系統正在處理中，請稍候..."):
@@ -48,7 +47,13 @@ if task_file and mgmt_file and line_file and history_file:
                 line_df = pd.read_excel(line_file)
                 history_df = pd.read_excel(history_file)
 
-                # 欄位名稱定義
+                # 🔥【超級核心防呆】強制將所有讀進來的 Excel 欄位名稱去除前後空格！
+                task_df.columns = task_df.columns.astype(str).str.strip()
+                mgmt_df.columns = mgmt_df.columns.astype(str).str.strip()
+                line_df.columns = line_df.columns.astype(str).str.strip()
+                history_df.columns = history_df.columns.astype(str).str.strip()
+
+                # 定義標準標題名稱
                 col_line_owner = '貨主'          
                 col_line_out_order = '出庫單號'  
                 col_line_oms_order = 'OMS訂單號' 
@@ -60,7 +65,7 @@ if task_file and mgmt_file and line_file and history_file:
 
                 col_mgmt_oms = 'OMS訂單號'       
                 col_mgmt_cust = '發貨名稱'       
-                col_mgmt_date = '希望配達日'     
+                col_mgmt_date = '希望配達日期'     
 
                 col_hist_ref = '參考單號'        
                 col_hist_id = '內部鍵ID'         
@@ -70,7 +75,13 @@ if task_file and mgmt_file and line_file and history_file:
                 col_task_loc = '從儲位'          
                 col_task_pal = '工作單位'        
 
-                # 步驟一：出庫單行 + 出庫管理
+                # 驗證必要欄位是否存在，若不存在直接噴出貼心提示
+                if col_mgmt_date search_missing := [c for c in [col_mgmt_oms, col_mgmt_cust, col_mgmt_date] if c not in mgmt_df.columns]:
+                    st.error(f"❌ 在【出庫單管理】檔案中找不到欄位：{search_missing}，請檢查拼字或是否上傳錯檔案。")
+                    st.info(f"目前【出庫單管理】偵測到的所有欄位有：{list(mgmt_df.columns)}")
+                    st.stop()
+
+                # 步驟一：出庫單行 + 出庫單管理
                 df_line_mgmt = pd.merge(line_df, mgmt_df[[col_mgmt_oms, col_mgmt_cust, col_mgmt_date]], 
                                         left_on=col_line_oms_order, right_on=col_mgmt_oms, how='left')
 
@@ -88,7 +99,7 @@ if task_file and mgmt_file and line_file and history_file:
                     how='left'
                 )
 
-                # 資料清洗與重組
+                # 資料清洗與結構重組
                 output_data = []
                 for _, row in df_final_raw.iterrows():
                     raw_cust_name = row[col_mgmt_cust] if pd.notna(row[col_mgmt_cust]) else ""
@@ -99,7 +110,7 @@ if task_file and mgmt_file and line_file and history_file:
                         '客戶名稱': clean_cust,
                         '訂單編號': row.get(col_line_out_order, ""),
                         '客戶訂單編號': row.get(col_line_oms_order, ""),
-                        '希望配達日': row.get(col_mgmt_date, ""),
+                        '希望配達日期': row.get(col_mgmt_date, ""), 
                         '儲位': row.get(col_task_loc, ""),
                         '棧板編號': row.get(col_task_pal, ""),
                         '棧板規格': get_pallet_spec(clean_cust),
@@ -114,13 +125,13 @@ if task_file and mgmt_file and line_file and history_file:
 
                 df_result = pd.DataFrame(output_data)
 
-                # 排序：商品條碼 > 效期 > 批號 > 棧板編號
+                # 排序
                 df_result = df_result.sort_values(
                     by=['商品條碼', '效期', '批號', '棧板編號'], 
                     ascending=[True, True, True, True]
                 )
 
-                # 將結果寫入記憶體中的 Excel 檔 (讓使用者下載)
+                # 匯出成 Excel
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_result.to_excel(writer, index=False)
@@ -128,7 +139,6 @@ if task_file and mgmt_file and line_file and history_file:
 
                 st.success("🎉 資料整合成功！請點擊下方按鈕下載報表。")
                 
-                # 下載按鈕
                 st.download_button(
                     label="💾 下載【軒郁_B2B揀貨整合總表.xlsx】",
                     data=buffer,
@@ -138,4 +148,3 @@ if task_file and mgmt_file and line_file and history_file:
 
             except Exception as e:
                 st.error(f"❌ 處理失敗。原因：{str(e)}")
-                st.info("請檢查上傳的 Excel 檔案欄位標題是否與設定一致。")
