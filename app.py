@@ -75,8 +75,9 @@ if task_file and mgmt_file and line_file and history_file:
                 col_task_loc = '從儲位'          
                 col_task_pal = '工作單位'        
 
-                # 驗證必要欄位是否存在，若不存在直接噴出貼心提示
-                if col_mgmt_date search_missing := [c for c in [col_mgmt_oms, col_mgmt_cust, col_mgmt_date] if c not in mgmt_df.columns]:
+                # 修正處：最安全的欄位驗證寫法
+                search_missing = [c for c in [col_mgmt_oms, col_mgmt_cust, col_mgmt_date] if c not in mgmt_df.columns]
+                if search_missing:
                     st.error(f"❌ 在【出庫單管理】檔案中找不到欄位：{search_missing}，請檢查拼字或是否上傳錯檔案。")
                     st.info(f"目前【出庫單管理】偵測到的所有欄位有：{list(mgmt_df.columns)}")
                     st.stop()
